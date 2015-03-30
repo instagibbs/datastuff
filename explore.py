@@ -142,7 +142,7 @@ np.save("y_test_" + str(mincount)+ ".npy",y_test)
 
 print "Logistic Regression"
 clf_l1_LR = LogisticRegression(C=.01, penalty='l1', tol=0.01)
-clf_l2_LR = LogisticRegression(C=.7, penalty='l2', tol=0.01)
+clf_l2_LR = LogisticRegression(C=.01, penalty='l2', tol=0.01)
 clf_l1_LR.fit(x_train, y_train)
 clf_l2_LR.fit(x_train, y_train)
 
@@ -155,7 +155,7 @@ l2_pred_proba = clf_l2_LR.predict_proba(x_test)[:,1]
 l1_pred_proba = clf_l1_LR.predict_proba(x_test)[:,1]
 
 tuned_parameters = [{'C': [.0001, .001, .01, 1, 10, 100]}]
-best1 = GridSearchCV(LogisticRegression(C=.01, penalty='l1', tol=0.01), tuned_parameters, cv=3)
+best1 = GridSearchCV(LogisticRegression(penalty='l2', tol=0.01), tuned_parameters, cv=3)
 best1.fit(x_train, y_train)
 print best1.best_estimator_ #With 20 cutoff, C=.01 for l1 is best
 
