@@ -113,6 +113,7 @@ sample_vocab_template = copy.deepcopy(complete_vocab)
 for k in sample_vocab_template.keys():
   sample_vocab_template[k] = 0
 '''
+'''
 samples=[]
 labels=[]
 #samples=np.zeros((len(bagsofwords), len(complete_vocab)))
@@ -133,6 +134,10 @@ for i, (bag, bill) in enumerate(zip(bagsofwords, data)):
       samples[i,k] = sample_vector[k] 
   if i % 100 == 0:
     print i
+'''  
+other_feats=[]
+for bill in data:
+  other_feats.append(bill['state'])
 
 md_data = []
 ca_data = []
@@ -153,7 +158,7 @@ x_train, x_test, y_train, y_test = train_test_split(X_scaled, labels, test_size=
 
 #*******************************
 #MD/CA split experiments
-
+'''
 x_md_train, x_md_test, y_md_train, y_md_test = train_test_split(X_scaled[np.nonzero(md_data)[0],:], labels[np.nonzero(md_data)[0]], test_size=0.33)
 x_ca_train, x_ca_test, y_ca_train, y_ca_test = train_test_split( X_scaled[np.nonzero(ca_data)[0],:], labels[np.nonzero(ca_data)[0]], test_size=0.33)
 
@@ -200,12 +205,107 @@ best1.fit(x_train, y_train)
 print best1.best_estimator_ #With 20 cutoff, C=.01 for l1 is best
 
   #samples.append(sample_vector)
-
+'''
 #*****************************************************************************************************
 # 2) Look at "bi-partisanship" vs "partisanship" on passage/voting metrics such as length of time from introduction to signing, etc
 #Votes may be missing, so must check top-line details and trust that.
+partisan_fracs = []
+for bill in data:
+  sponsors = bill["sponsors"]
+  dem=0.00001 #eps to not div by 0
+  rep=0.00001
+  for sponsor in sponsors:
+    #print sponsor
+    if sponsor["party"] != None and sponsor["party"][0:10] == 'Republican':
+      rep += 1
+    elif sponsor["party"] != None and sponsor["party"][0:10] == 'Democratic':
+      dem += 1
+  partisan_frac = float(dem)/rep if rep>dem else float(rep)/dem
+  partisan_fracs.append(1-partisan_frac) 
 
-# 3) Look at when things get vetoed? Differential between passing lower/upper and vice versa to signing?
+partisan_fracs = np.asarray(partisan_fracs)
+plt.scatter(partisan_fracs, labels)
+plt.savefig("scatter.png")
+plt.clf()
 
+md_labels=labels[np.nonzero(md_data)[0]]
+ca_labels=labels[np.nonzero(ca_data)[0]]
+md_partisan_fracs=partisan_fracs[np.nonzero(md_data)[0]]
+ca_partisan_fracs=partisan_fracs[np.nonzero(ca_data)[0]]
 
+plt.hist(partisan_fracs[np.nonzero(labels)[0]], bins = 100)
+plt.savefig("pos.png")
+plt.clf()
+plt.hist(partisan_fracs[np.where(labels==0)[0]], bins = 100)
+plt.savefig("neg.png")
+plt.clf()
 
+#Split states, see difference
+
+plt.hist(md_partisan_fracs[np.nonzero(md_labels)[0]], bins = 100)
+plt.savefig("pos_md.png")
+plt.clf()
+plt.hist(md_partisan_fracs[np.where(md_labels==0)[0]], bins = 100)
+plt.savefig("neg_md.png")
+plt.clf()
+
+plt.hist(ca_partisan_fracs[np.nonzero(ca_labels)[0]], bins = 100)
+plt.savefig("pos_ca.png")
+plt.clf()
+plt.hist(ca_partisan_fracs[np.where(ca_labels==0)[0]], bins = 100)
+plt.savefig("neg_ca.png")
+plt.clf()
+
+#Look at where in distribution Pos/Neg diverges the most?
+
+# 3) Clustering representatives from a similarity graph
+
+#Construct similarity graph
+md_reps = set([])
+ca_reps = set([])
+
+#Get sets of reps
+for i, bill in enumerate(data):
+  for vote_chamber in bill["votes"].keys():
+    for yes in bill["votes"][vote_chamber]['yes_vote']:
+      if md_data[i] == 1:
+        md_reps.add(yes)
+      elif ca_data[i] == 1:
+        ca_reps.add(yes)
+    for no in bill["votes"][vote_chamber]['no_vote']:
+      if md_data[i] == 1:
+        md_reps.add(no)
+      elif ca_data[i] == 1:
+        ca_reps.add(no)
+
+#Construct similarity matrices for reps
+md_rep_mat = np.zeros((len(md_reps), len(md_reps)))
+md_dict = {}
+for i, rep in enumerate(md_reps):
+  md_dict[rep] = i
+
+ca_rep_mat = np.zeros((len(ca_reps), len(ca_reps)))
+ca_dict = {}
+for i, rep in enumerate(ca_reps):
+  ca_dict[rep] = i
+
+#Count co-votes as strength of connection. Double-counting I believe.
+for i, bill in enumerate(data):
+  for vote_chamber in bill["votes"].keys():
+    for yes in bill["votes"][vote_chamber]['yes_vote']:
+      for yes2 in bill["votes"][vote_chamber]['yes_vote']:
+        if yes != yes2:
+          if md_data[i] == 1:
+            md_rep_mat[md_dict[yes], md_dict[yes2]] += 1
+          elif ca_data[i] == 1:
+            ca_rep_mat[ca_dict[yes], ca_dict[yes2]] += 1
+    for no in bill["votes"][vote_chamber]['yes_vote']:
+      for no2 in bill["votes"][vote_chamber]['yes_vote']:
+        if no != no2:
+          if md_data[i] == 1:
+            md_rep_mat[md_dict[no], md_dict[no2]] += 1
+          elif ca_data[i] == 1:
+            ca_rep_mat[ca_dict[no], ca_dict[no2]] += 1
+        
+spectral = SpectralClustering(n_clusters=2, affinity='rbf')
+spectral.fit(md_rep_mat)
