@@ -210,6 +210,7 @@ print best1.best_estimator_ #With 20 cutoff, C=.01 for l1 is best
 # 2) Look at "bi-partisanship" vs "partisanship" on passage/voting metrics such as length of time from introduction to signing, etc
 #Votes may be missing, so must check top-line details and trust that.
 partisan_fracs = []
+rep_affiliation = {}
 for bill in data:
   sponsors = bill["sponsors"]
   dem=0.00001 #eps to not div by 0
@@ -218,8 +219,10 @@ for bill in data:
     #print sponsor
     if sponsor["party"] != None and sponsor["party"][0:10] == 'Republican':
       rep += 1
+      rep_affiliation[sponsor['name']] = 'r'
     elif sponsor["party"] != None and sponsor["party"][0:10] == 'Democratic':
       dem += 1
+      rep_affiliation[sponsor['name']] = 'd'
   partisan_frac = float(dem)/rep if rep>dem else float(rep)/dem
   partisan_fracs.append(1-partisan_frac) 
 
@@ -264,6 +267,7 @@ plt.clf()
 md_reps = set([])
 ca_reps = set([])
 
+
 #Get sets of reps
 for i, bill in enumerate(data):
   for vote_chamber in bill["votes"].keys():
@@ -307,5 +311,42 @@ for i, bill in enumerate(data):
           elif ca_data[i] == 1:
             ca_rep_mat[ca_dict[no], ca_dict[no2]] += 1
         
-spectral = SpectralClustering(n_clusters=2, affinity='rbf')
-spectral.fit(md_rep_mat)
+spectral = SpectralClustering(n_clusters=2, affinity='precomputed')
+spectral.fit(md_rep_mat) 
+ys_md = spectral.fit_predict(md_rep_mat)
+
+spectral = SpectralClustering(n_clusters=2, affinity='precomputed')
+spectral.fit(ca_rep_mat) 
+ys_ca = spectral.fit_predict(ca_rep_mat)
+
+y_yhat_md = []
+y_yhat_ca = []
+#See if sponsors vote with people from their own party the most
+for rep, party in rep_affiliation.items():
+  entry = []
+  if rep in md_dict:
+    entry.append(party)
+    entry.append(ys_md[md_dict[rep]])
+    y_yhat_md.append(entry)
+  elif rep in ca_dict:
+    entry.append(party)
+    entry.append(ys_ca[ca_dict[rep]])
+    y_yhat_ca.append(entry)
+#  else:
+#    print rep, "not found"
+
+d0count = 0
+d1count = 0
+for entry in y_yhat_md:
+  if entry[0] == 'd' and entry[1] == 0 or entry[0] == 'r' and entry[1] == 1:
+    d0count += 1
+  else:
+    d1count += 1
+    
+d0count = 0
+d1count = 0
+for entry in y_yhat_ca:
+  if entry[0] == 'd' and entry[1] == 0 or entry[0] == 'r' and entry[1] == 1:
+    d0count += 1
+  else:
+    d1count += 1
