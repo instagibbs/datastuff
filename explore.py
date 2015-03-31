@@ -118,7 +118,9 @@ labels=[]
 #samples=np.zeros((len(bagsofwords), len(complete_vocab)))
 #samples=csr_matrix((len(bagsofwords), len(complete_vocab)))
 samples=lil_matrix((len(bagsofwords), len(complete_vocab)))
+other_feats = []
 for i, (bag, bill) in enumerate(zip(bagsofwords, data)):
+  other_feats.append(bill["state"])
   sample_vector=[]
   for word in complete_vocab:
     sample_vector.append(bag[word])
@@ -132,8 +134,46 @@ for i, (bag, bill) in enumerate(zip(bagsofwords, data)):
   if i % 100 == 0:
     print i
 
+md_data = []
+ca_data = []
+for feat in other_feats:
+  if feat == 'md':
+    md_data.append(1)
+    ca_data.append(0)
+  elif feat == 'ca':
+    md_data.append(0)
+    ca_data.append(1)
+  else:
+    md_data.append(0)
+    ca_data.append(0)
+
+labels = np.asarray(labels)
 X_scaled = preprocessing.scale(samples, with_mean=False)
 x_train, x_test, y_train, y_test = train_test_split(X_scaled, labels, test_size=0.33)
+
+#*******************************
+#MD/CA split experiments
+
+x_md_train, x_md_test, y_md_train, y_md_test = train_test_split(X_scaled[np.nonzero(md_data)[0],:], labels[np.nonzero(md_data)[0]], test_size=0.33)
+x_ca_train, x_ca_test, y_ca_train, y_ca_test = train_test_split( X_scaled[np.nonzero(ca_data)[0],:], labels[np.nonzero(ca_data)[0]], test_size=0.33)
+
+clf_l2_LR_md = LogisticRegression(C=.01, penalty='l2', tol=0.01)
+clf_l2_LR_md.fit(x_md_train, y_md_train)
+
+clf_l2_LR_ca = LogisticRegression(C=.01, penalty='l2', tol=0.01)
+clf_l2_LR_ca.fit(x_ca_train, y_ca_train)
+
+l2_md_ca_preds = clf_l2_LR_md.predict(x_ca_test)
+l2_md_md_preds = clf_l2_LR_md.predict(x_md_test)
+l2_ca_md_preds = clf_l2_LR_ca.predict(x_md_test)
+l2_ca_ca_preds = clf_l2_LR_ca.predict(x_ca_test)
+
+print classification_report(y_ca_test, l2_md_ca_preds)
+print classification_report(y_md_test, l2_md_md_preds)
+print classification_report(y_md_test, l2_ca_md_preds)
+print classification_report(y_ca_test, l2_ca_ca_preds)
+
+#*********************************
 
 np.save("x_train_" + str(mincount)+ ".npy",x_train)
 np.save("x_test_" + str(mincount)+ ".npy",x_test)
@@ -160,28 +200,6 @@ best1.fit(x_train, y_train)
 print best1.best_estimator_ #With 20 cutoff, C=.01 for l1 is best
 
   #samples.append(sample_vector)
-'''
-samples = []
-binnedSamples = [ [] for i in range(5)]
-for bill in data:
-  sample = []#Structure will be binary word existence label at end
-  sample_vocab = copy.copy(sample_vocab_template)
-  words = re.split(stripre, bill['documents'][str(len(bill["documents"])-1)])
-  for word in words:
-    word = word.lower()
-    if word in complete_vocab:
-      sample_vocab[word] = sample_vocab.get(word, 0)+1
-  for k in complete_vocab.keys(): #Iterate using untouched dict for det ordering
-    print k, sample_vocab[k]
-    sample.append(sample_vocab[k])
-  if bill["actions"]["enacted"] =='null':
-    sample.append(0)
-  else:
-    sample.append(1)
-  samples.append(sample)
-  binnedSamples[len(bill["documents"])].append(sample)
-  break
-'''
 
 #*****************************************************************************************************
 # 2) Look at "bi-partisanship" vs "partisanship" on passage/voting metrics such as length of time from introduction to signing, etc
